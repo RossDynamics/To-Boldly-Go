@@ -3,8 +3,8 @@
 #Shapely, after some experimentation, has been abandoned as unreliable;
 #manifold intersections are once again being found manually.
 #Call this command as
-#sudo python toboldlygo3.py energy mu itinerary
-#for example (Jupiter) sudo python toboldlygo3.py -1.515 9.537e-4 x21
+#sudo python toboldlygo.py energy mu itinerary
+#for example (Jupiter) sudo python toboldlygo.py -1.515 9.537e-4 x21
 #If Python raises the exception RuntimeError: could not create GdkCursor object when the program
 #is run or imported, you may need to run "export DISPLAY=:0.0" from the command line
 
