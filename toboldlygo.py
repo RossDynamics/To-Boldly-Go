@@ -237,11 +237,11 @@ def periodtest(mu, sim, positions, mintegration, time, varlist, period):
     elif time % (period / 10.0) < varlist["timestep"]:
         print positions[time]
         print "Time:", time
-    elif time == period:
+    if time == period:
         print "End:", positions[time]
         print "Time:", time
         return True, mintegration[time]
-    elif (time - period) * np.sign(varlist["timestep"]) > 0:
+    if (time - period) * np.sign(varlist["timestep"]) > 0:
         varlist["timestep"] /= -2.0
         return False, None
     return False, None
@@ -332,7 +332,7 @@ def manifoldtest(mu, sim, positions, mintegration, time, varlist, args):
         varlist["remainhits"] = args[3]
 
     if systemtime.clock() - varlist["starttime"] > args[2]:
-        print "skipped"
+        print "timeout"
         return True, None
     
     check = args[0](mu, positions, time, varlist["timestep"], args[1], varlist["lastpos"])
@@ -341,10 +341,9 @@ def manifoldtest(mu, sim, positions, mintegration, time, varlist, args):
 
     if check and varlist["remainhits"] > 0: #If we have a crossing or a hit on the Poincare surface and remainhits is positive, we decrement remainhits
         varlist["remainhits"] -= 1
-        print varlist["remainhits"]
     
     if check == 2 and varlist["remainhits"] <= 0: #If we have a hit and remainhits is not positive, we try to yield the crossing
-        print "crossed"
+        print "crossed @ depth", args[3]
         computedenergy = findenergy(positions[time][0], positions[time][1], positions[time][2], positions[time][3], mu)
         if abs(computedenergy - energy) < args[4]:
             #We ensure that the energy is within a specific tolerance (per Dr. Ross's suggestion); otherwise, we throw out the point
@@ -393,21 +392,35 @@ def energypo(energy, mu, lnum, timestep, tolerance, sa1, sa2):
     _, sa2vynew = findparams(mu, lnum, sa2)
     sa2c = pocorrector(mu, lagrangex, timestep, sa2, sa2vynew)
     
-    energies = [[findenergy(sa1c[0], 0, 0, sa1c[1], mu),sa1c], #Structure: [[energy1, [x1, vy1]], [energy2, [x2, vy2]], ...]
+    energies = [[findenergy(sa1c[0], 0, 0, sa1c[1], mu),sa1c], #Structure: [[energy1, [x1, vy1, period]], [energy2, [x2, vy2, period]], ...]
                 [findenergy(sa2c[0], 0, 0, sa2c[1], mu),sa2c]] #We don't use a dict because we need everything sorted
     dindex = -2 #The index in energies used to calculate the delta values
     print "USING NUMERICAL CONTINUATION"
+    refining = False #If not refining, we build an initial family of orbits where the last two orbits bracket the desired energy
+                     #If refining, we use the midpoint algorithm to target the desired energy
+
+    lower = energies[-2]
+    upper = energies[-1]
     while True:
-        x = 2 * energies[-1][1][0] - energies[dindex][1][0]
-        guessvy = 2 * energies[-1][1][1] - energies[dindex][1][1]
+        if refining:
+            x = (lower[1][0] + upper[1][0]) / 2.0
+            guessvy = (lower[1][1] + upper[1][1]) / 2.0
+        else:
+            x = 2 * energies[-1][1][0] - energies[dindex][1][0]
+            guessvy = 2 * energies[-1][1][1] - energies[dindex][1][1]
+            
         x, vy, period = pocorrector(mu, lagrangex, timestep, lagrangex - x, guessvy)
         currentenergy = findenergy(x, 0, 0, vy, mu)
         print x, vy, period, currentenergy
         energies.append([currentenergy, [x, vy, period]])
         if currentenergy > energy: #If the current energy is greater than the desired energy
-            if abs(currentenergy - energy) > tolerance:
-                raise RuntimeError("Energy of periodic orbit not within specified tolerance")
+            refining = True
+            upper = [currentenergy, [x, vy, period]]
+        elif currentenergy < energy:
+            lower = [currentenergy, [x, vy, period]]
+        if abs(currentenergy - energy) < tolerance:
             break
+            
     print energies
     
     return x, vy, period
@@ -495,10 +508,11 @@ def integrateregion(energy, mu, timestep, timeout, region, depth, tolerance, sec
     """Integrates a set of points denoted by region to section and returns the set of points at the depth-th intersection."""
     integratedregion = []
     for i in region:
-        intpos = integratecore(mu, timestep, i[0], i[1], i[2], i[3], manifoldtest,
-                                [section, energy, timeout, depth, tolerance], findmatrix = False)[0]
-        if intpos is not None:
-            integratedregion.append(intpos)
+        for j in xrange(depth):
+            intpos = integratecore(mu, timestep, i[0], i[1], i[2], i[3], manifoldtest,
+                                    [section, energy, timeout, j + 1, tolerance], findmatrix = False)[0]
+            if intpos is not None:
+                integratedregion.append(intpos)
     return integratedregion
 
 def createpolygon(region, section):
@@ -628,14 +642,14 @@ def posreal(value, exception = ValueError):
         raise exception
     return newvalue
 
-def natural(value):
+def natural(value, exception = ValueError):
     """Casts to natural (integer) if possible"""
     newvalue = int(value) #The exception may get raised here by the int function if needed
     if newvalue <= 0:
         raise exception
     return newvalue
 
-def whole(value):
+def whole(value, exception = ValueError):
     """Casts to whole (integer) if possible"""
     newvalue = int(value) #The exception may get raised here by the int function if needed
     if newvalue < 0:
@@ -802,8 +816,6 @@ def finditinerary(energy, mu, itinerary, timestep, mtimestep, ttimestep, timeout
                                                 seedorbit1, seedorbit2, False, interceptparams[0], interceptparams[1],
                                                 interceptparams[2])
                 unstabcomputemic = False
-            
-            print "-------Adding manifold intercepts at depth " + str(interceptparams[6]) + "-------"
 
             #We integrate the existing trajectory piece forward and the stable manifold backwards to the section
             print "-------INTEGRATING EXISTING TRAJECTORY FORWARDS-------"
@@ -817,11 +829,8 @@ def finditinerary(energy, mu, itinerary, timestep, mtimestep, ttimestep, timeout
             forwardregiontemp, rep, stay = getoverlap(energy, mu, forwardintegration, backwardintegration, section)
 
             if not stay:
-                
                 forwardregion = forwardregiontemp
                 break
-        
-        #depth += 1
             
         print forwardregion
 
@@ -960,12 +969,12 @@ if __name__ == "__main__":
     if inputstuff.monodromytimestep:
         mtimestep = inputstuff.monodromytimestep
     else:
-        mtimestep = 1e-3
+        mtimestep = 1e-4
 
     if inputstuff.tubetimestep:
         ttimestep = inputstuff.tubetimestep
     else:
-        ttimestep = 1e-3
+        ttimestep = 5e-4
 
     if inputstuff.visualizationtimestep:
         vtimestep = inputstuff.visualizationtimestep
@@ -980,7 +989,7 @@ if __name__ == "__main__":
     if inputstuff.energytolerance:
         tolerance = inputstuff.energytolerance
     else:
-        tolerance = 1e-3
+        tolerance = 1e-5
 
     if inputstuff.seedorbit1:
         seedorbit1 = inputstuff.seedorbit1
