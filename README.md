@@ -1,3 +1,8 @@
-# To-Boldly-Go
+# To Boldly Go
 
-To Boldly Go is a Python framework for automatic low-energy trajectory design. The source code is in the Python file; see the Word document, my thesis, for an explanation of how it works.
+To Boldly Go is a Python framework for automatic low-energy trajectory design.
+
+##Files
+
+-toboldlygo.py: To Boldly Go itself
+- thesis.docx: My Honors thesis explaining To Boldly Go.
