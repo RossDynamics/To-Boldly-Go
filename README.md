@@ -6,3 +6,4 @@ To Boldly Go is a Python framework for automatic low-energy trajectory design.
 
 - toboldlygo.py: To Boldly Go itself
 - thesis-final.docx: My Honors thesis explaining To Boldly Go.
+- thesis-final.pdf: a PDF version of thesis-final.docx.
